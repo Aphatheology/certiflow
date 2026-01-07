@@ -1,0 +1,5 @@
+{
+  "name": "CertiFlow - Universal Certificate Generator",
+  "description": "A robust, template-agnostic certificate generator. Upload any design, map dynamic fields using a drag-and-drop editor, and generate high-quality certificates instantly. Features AI template generation.",
+  "requestFramePermissions": []
+}
