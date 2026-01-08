@@ -2,6 +2,16 @@ import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { CertificateField, GuideLine } from '../types';
 import { Copy, Plus, Minus, Maximize, Trash2, X, Move } from 'lucide-react';
 
+const getEventClientPos = (e: React.MouseEvent | React.TouchEvent | MouseEvent | TouchEvent) => {
+  if ('touches' in e && e.touches.length > 0) {
+      return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  }
+  return { 
+      x: (e as any).clientX, 
+      y: (e as any).clientY 
+  };
+};
+
 interface CanvasEditorProps {
   imageUrl: string;
   fields: CertificateField[];
@@ -127,13 +137,14 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   }, [selectedFieldIds, onRemoveField, fields, onUpdateField]);
 
   // --- PANNING HANDLERS (Background) ---
-  const handleBgMouseDown = (e: React.MouseEvent) => {
+  const handleBgStart = (e: React.MouseEvent | React.TouchEvent) => {
     // Only pan if clicking on background and NOT on a field/guide
     if (containerRef.current) {
         setIsPanning(true);
+        const { x, y } = getEventClientPos(e);
         setPanStart({
-            x: e.clientX,
-            y: e.clientY,
+            x,
+            y,
             scrollLeft: containerRef.current.scrollLeft,
             scrollTop: containerRef.current.scrollTop
         });
@@ -142,10 +153,15 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   };
 
   // --- FIELD DRAGGING HANDLERS ---
-  const handleFieldMouseDown = (e: React.MouseEvent, field: CertificateField) => {
+  const handleFieldStart = (e: React.MouseEvent | React.TouchEvent, field: CertificateField) => {
     e.stopPropagation();
     
-    const isMultiSelect = e.shiftKey || e.metaKey || e.ctrlKey;
+    // Check for multi-select modifier keys (only relevant for mouse)
+    let isMultiSelect = false;
+    if ('shiftKey' in e) {
+        isMultiSelect = e.shiftKey || e.metaKey || e.ctrlKey;
+    }
+
     let newSelectedIds = selectedFieldIds;
 
     if (isMultiSelect) {
@@ -163,7 +179,8 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     }
 
     // Setup dragging
-    setDragStartPos({ x: e.clientX, y: e.clientY });
+    const { x, y } = getEventClientPos(e);
+    setDragStartPos({ x, y });
     
     const initialPos: Record<string, {x: number, y: number}> = {};
     fields.filter(f => newSelectedIds.includes(f.id)).forEach(f => {
@@ -174,17 +191,24 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   };
 
   // --- GUIDE DRAGGING HANDLERS ---
-  const handleGuideMouseDown = (e: React.MouseEvent, guideId: string) => {
+  const handleGuideStart = (e: React.MouseEvent | React.TouchEvent, guideId: string) => {
     e.stopPropagation();
     setDraggingGuideId(guideId);
   };
 
   // --- GLOBAL MOVE HANDLER ---
-  const handleMouseMove = (e: React.MouseEvent) => {
+  const handleMove = (e: React.MouseEvent | React.TouchEvent | MouseEvent | TouchEvent) => {
     // 1. Handle Panning
+    const { x: clientX, y: clientY } = getEventClientPos(e);
+    
     if (isPanning && containerRef.current) {
-        const dx = e.clientX - panStart.x;
-        const dy = e.clientY - panStart.y;
+        // Prevent default scrolling when panning
+        if (e.type === 'touchmove') {
+             // e.preventDefault(); // Commented out to avoid passive listener issues in React synthetic events, handled in useEffect
+        }
+        
+        const dx = clientX - panStart.x;
+        const dy = clientY - panStart.y;
         containerRef.current.scrollLeft = panStart.scrollLeft - dx;
         containerRef.current.scrollTop = panStart.scrollTop - dy;
         return; 
@@ -196,8 +220,13 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
     // Field Dragging
     if (draggingFieldId && selectedFieldIds.length > 0) {
-      const deltaPercentX = ((e.clientX - dragStartPos.x) / rect.width) * 100;
-      const deltaPercentY = ((e.clientY - dragStartPos.y) / rect.height) * 100;
+       // Prevent default scrolling when dragging field
+       if (e.type === 'touchmove' && e instanceof Event) {
+          e.preventDefault(); 
+       }
+
+      const deltaPercentX = ((clientX - dragStartPos.x) / rect.width) * 100;
+      const deltaPercentY = ((clientY - dragStartPos.y) / rect.height) * 100;
 
       const updates: Record<string, Partial<CertificateField>> = {};
       let primaryFieldX = 0; 
@@ -254,14 +283,17 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
     // Guide Dragging
     if (draggingGuideId) {
+        if (e.type === 'touchmove' && e instanceof Event) {
+             e.preventDefault();
+        }
       const guide = guides.find(g => g.id === draggingGuideId);
       if (guide) {
         if (guide.type === 'vertical') {
-          let x = e.clientX - rect.left;
+          let x = clientX - rect.left;
           x = Math.max(0, Math.min(x, rect.width));
           onUpdateGuide(draggingGuideId, (x / rect.width) * 100);
         } else {
-          let y = e.clientY - rect.top;
+          let y = clientY - rect.top;
           y = Math.max(0, Math.min(y, rect.height));
           onUpdateGuide(draggingGuideId, (y / rect.height) * 100);
         }
@@ -269,7 +301,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     }
   };
 
-  const handleMouseUp = () => {
+  const handleEnd = () => {
     setDraggingFieldId(null);
     setDraggingGuideId(null);
     setActiveSnapLines({ x: null, y: null });
@@ -278,11 +310,17 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   };
 
   useEffect(() => {
-    window.addEventListener('mouseup', handleMouseUp);
-    window.addEventListener('mousemove', handleMouseMove as any); // Type cast for React Synthetic -> Native
+    window.addEventListener('mouseup', handleEnd);
+    window.addEventListener('mousemove', handleMove as any); // Type cast for React Synthetic -> Native
+    window.addEventListener('touchend', handleEnd);
+    // Use passive: false to allow e.preventDefault() in handler (important for preventing scrolling while dragging)
+    window.addEventListener('touchmove', handleMove as any, { passive: false }); 
+
     return () => {
-      window.removeEventListener('mouseup', handleMouseUp);
-      window.removeEventListener('mousemove', handleMouseMove as any);
+      window.removeEventListener('mouseup', handleEnd);
+      window.removeEventListener('mousemove', handleMove as any);
+      window.removeEventListener('touchend', handleEnd);
+      window.removeEventListener('touchmove', handleMove as any);
     };
   }, [draggingFieldId, draggingGuideId, isPanning, panStart]); // Add dependencies
 
@@ -334,7 +372,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         ref={containerRef}
         className={`w-full h-full overflow-auto flex items-center justify-center focus:outline-none bg-slate-100 ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
         onClick={() => onSelectField(null)}
-        onMouseDown={handleBgMouseDown}
+        onMouseDown={handleBgStart}
         tabIndex={0} 
       >
         <div 
@@ -362,7 +400,8 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
             {guides.map(guide => (
             <div
                 key={guide.id}
-                onMouseDown={(e) => handleGuideMouseDown(e, guide.id)}
+                onMouseDown={(e) => handleGuideStart(e, guide.id)}
+                onTouchStart={(e) => handleGuideStart(e, guide.id)}
                 className={`absolute z-30 hover:bg-cyan-400 group flex items-center justify-center
                 ${guide.type === 'vertical' ? 'w-[1px] h-full top-0 cursor-col-resize hover:w-[4px]' : 'h-[1px] w-full left-0 cursor-row-resize hover:h-[4px]'}
                 ${draggingGuideId === guide.id ? (guide.type === 'vertical' ? 'w-[4px] bg-cyan-500' : 'h-[4px] bg-cyan-500') : 'bg-cyan-300'}
@@ -427,7 +466,8 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
                     whiteSpace: 'nowrap',
                 }}
                 onClick={(e) => e.stopPropagation()}
-                onMouseDown={(e) => handleFieldMouseDown(e, field)}
+                onMouseDown={(e) => handleFieldStart(e, field)}
+                onTouchStart={(e) => handleFieldStart(e, field)}
                 >
                 <div className={`relative px-1 ${isSelected ? 'border-2 border-blue-500' : 'border border-transparent hover:border-blue-300 hover:border-dashed'}`}>
                     {field.value || field.label}

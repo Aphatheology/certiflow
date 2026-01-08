@@ -263,6 +263,19 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                />
              </div>
              
+             {/* Field Value Editing */}
+             <div>
+               <label className="text-[10px] text-gray-500 mb-1 block">Field Value</label>
+               <input 
+                type="text"
+                value={primaryField.value}
+                onChange={(e) => onUpdateField(primaryField.id, { value: e.target.value })}
+                className="w-full text-xs bg-white border border-gray-300 rounded p-1.5 focus:border-blue-500 focus:outline-none text-gray-900"
+                placeholder="Enter text..."
+               />
+             </div>
+             
+             
              {/* Font Family */}
              <div>
                <label className="text-[10px] text-gray-500 mb-1 block">Font</label>
@@ -425,17 +438,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                          </button>
                     </div>
                   </div>
-                  {selectedFieldIds.length === 1 && selectedFieldIds[0] === field.id ? (
-                     <input 
-                      type="text" 
-                      value={field.value}
-                      placeholder="Enter sample value..."
-                      onChange={(e) => onUpdateField(field.id, { value: e.target.value })}
-                      className="w-full text-xs bg-white border border-gray-300 rounded px-2 py-1 focus:border-blue-500 focus:outline-none text-gray-900"
-                    />
-                  ) : (
                     <div className="text-gray-500 truncate text-xs">{field.value}</div>
-                  )}
                 </div>
               ))
             )}
